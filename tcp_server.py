@@ -204,7 +204,7 @@ class ClientHass(Client):
                 continue
 
             # キューにセンサからのレスポンスが入るまでは受信待ち
-            self.procSendDataFromAnoterSensorToClient(20)
+            self.procSendDataFromAnoterSensorToClient(SOCKET_TIMEOUT_SEC * 2)
 
 class ClientSensor(Client):
 
