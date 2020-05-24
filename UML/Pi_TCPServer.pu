@@ -16,7 +16,7 @@ state "TCPソケットオープン中" as tcp_open {
   state "センサクライアント" as sensor_client {
 
     state "土壌湿気センサ接続中" as sensor1 {
-      sensor1:センサID = 001
+      sensor1:センサID = s01
       sensor1:サービス = 現在値読み
 
       state "センサへコマンド送付" as sensor1_write
@@ -26,24 +26,25 @@ state "TCPソケットオープン中" as tcp_open {
       sensor1_read : 現在値, 設定値
 
       state "HASSのコマンド待機" as sensor1_wait
+      state "クライアントID待機" as clientID_wait
+      clientID_wait : s01\\r\\n
       state "HASSへコマンド送付" as sensor1_to_hass
       state "クローズ処理" as sensor1_close
 
-      [*] -> sensor1_wait
+      [*] -> clientID_wait
+      clientID_wait -> sensor1_wait
       sensor1_wait -down-> sensor1_write : コマンド受信
       sensor1_write -> sensor1_read : センサへデータ送付
       sensor1_read -right-> sensor1_to_hass :データ受信
       sensor1_to_hass --> sensor1_wait :コマンド送付
-      sensor1_wait -> sensor1_close :センサ接続切断
+      clientID_wait -> sensor1_close :クライアントID不正
       sensor1_close -> [*]
     }
 
     state "電球スイッチセンサ" as sensor2 {
       sensor2: センサID = 002
       sensor2: サービス = 設定値書き, サービス1(ON/OFF)
-      state "待機" as sensor2_wait
-      state "コマンド送付"
-      state "クローズ処理"
+      state "mada"
     }
 
     [*] --> sensor1:土壌湿気センサから接続要求
