@@ -1,0 +1,154 @@
+@startuml
+
+title TCP_Server in RaspberryPi
+
+box "HomeSensorClient" #limegreen
+actor HomeAssistant as Hass #orange
+actor Sensor1 #lightpink
+end box
+
+box "Python_Server" #LightBlue
+participant mainHandler as main
+database 起動タスク管理キュー as taskQue
+participant タスク間共有管理クラス as shareTskMng
+database タスク間共有キュー  as shareQue
+activate main
+activate shareTskMng
+
+main -> main : CMD Wait
+note right of main : Clientから\nOpen要求待ち
+activate main #moccasin
+
+activate Sensor1
+Sensor1 -> main : Open
+deactivate main
+Sensor1 -> main : Client ID
+alt  クライアントID照合 = NG
+  main --> Sensor1 : Err Code 1
+  main --> Sensor1:Close
+  destroy Sensor1
+else クライアントID照合 = OK
+  main --> Sensor1 :"Accept"
+  activate Sensor1
+  main -> taskQue : Sensor1：True
+  activate taskQue #lightpink
+  create control SensorCon1  #lightpink
+  main -> SensorCon1 : Create
+  activate SensorCon1
+end
+
+main -> main : CMD Wait
+activate main #moccasin
+note right of main : Clientから\nOpen要求待ち
+
+SensorCon1 -> SensorCon1 : Que Wait
+note right SensorCon1 : 共有Queへの格納待ち\n(無限待ち)
+activate SensorCon1 #moccasin
+SensorCon1 -> shareTskMng : フラグの定期監視
+shareTskMng --> SensorCon1 : Flag = False
+
+Hass -> main : Open
+deactivate main
+activate Hass
+alt  クライアントID照合 = NG
+  main --> Hass:Close
+  destroy Hass
+else
+  main --> Hass :"Accept"
+  activate Hass
+  main -> taskQue : HassCon：True
+  activate taskQue #orange
+  create control HassCon  #orange
+  main -> HassCon : Create
+  activate HassCon
+end
+HassCon -> HassCon : Hassからデータ受信待ち
+activate HassCon #lavender
+note right HassCon : Hassからの受信を待ち\n(無限待ち)
+main -> main : CMD Wait
+note right main  : Clientから\nOpen要求待ち
+activate main #moccasin
+Hass -> HassCon :CMD Send
+deactivate HassCon
+note over Hass :CMD format = "SensorID,SvcID,Data"
+
+alt SensorID = NG or SvcID = NG
+  HassCon --> Hass : "CMD ERR"
+  destroy Hass
+else Sensor ID = OK and SvcID = OK
+  HassCon -> taskQue : 送信先タスクの生存確認
+  activate Hass
+  taskQue --> HassCon : Value
+  alt Value = False
+    HassCon -> Hass : "CMD ERR"
+    destroy Hass
+  end
+end
+HassCon -> HassCon :Svcコマンド生成
+activate Hass
+HassCon -> shareTskMng : SVC CMD発行
+activate shareTskMng #thistle
+shareTskMng -> shareQue : SVC CMD PUSH
+activate shareQue #thistle
+shareTskMng --> HassCon : CMD 生成終了
+deactivate shareTskMng
+
+HassCon -> HassCon : Que Wait
+activate HassCon #moccasin
+note right HassCon : 共有Queへの格納待ち\n(タイムアウト付き)
+HassCon -> shareTskMng : フラグ定期監視
+shareTskMng --> HassCon :Flag = False
+shareTskMng --> SensorCon1 : Flag = True
+deactivate SensorCon1
+
+SensorCon1 -> shareQue : キュー取り出し
+shareQue --> SensorCon1 : CMD データ
+deactivate shareQue
+
+alt Svc CMD = Not Exist
+  SensorCon1 -> shareTskMng : Err Resp生成
+  activate shareTskMng #thistle
+  shareTskMng -> shareQue :Resp CMD PUSH
+  activate shareQue #thistle
+  shareTskMng --> SensorCon1 :Resp 生成終了
+  deactivate shareTskMng
+  deactivate shareQue
+else Svc CMD = Exist
+  SensorCon1 -> SensorCon1 : Svcコマンド生成
+  SensorCon1 -> Sensor1 : "SVC CMD"
+  activate Sensor1 #lightpink
+  SensorCon1 -> SensorCon1 : 受信待ち
+  note right of SensorCon1:センサから受信待ち\n(タイムアウト付き)
+  activate SensorCon1 #thistle
+  note right of Sensor1 : サービス実行
+  Sensor1 --> SensorCon1 : "RESP DATA"
+  deactivate Sensor1
+  deactivate SensorCon1
+  SensorCon1 -> shareTskMng : OK Resp生成
+  activate shareTskMng #thistle
+  shareTskMng -> shareQue : Resp CMD PUSH
+  activate shareQue #thistle
+  shareTskMng --> SensorCon1 : Resp生成終了
+  deactivate shareTskMng
+end
+
+SensorCon1 -> SensorCon1 : Que Wait
+activate SensorCon1 #moccasin
+note right SensorCon1 : 共有Queへの格納待ち
+
+shareTskMng --> HassCon : Flag = True
+deactivate HassCon
+
+HassCon -> shareQue : キュー取り出し
+shareQue --> HassCon : Resp取り出し
+deactivate shareQue
+HassCon -> HassCon : Svc コマンド生成
+HassCon -> Hass : "SVC CMD"
+
+HassCon -> HassCon : Hassからデータ受信待ち
+activate HassCon #lavender
+note right HassCon : Hassからの受信を待ち
+
+
+end box
+@enduml

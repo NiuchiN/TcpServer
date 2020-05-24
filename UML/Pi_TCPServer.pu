@@ -1,0 +1,132 @@
+@startuml
+state "Socket生成" as create
+create : IPアドレス：192.168.2.***
+create : ポート：49152
+
+state "リッスン開始" as listen
+listen : 最大接続数：5
+
+state "TCPソケットクローズ" as tcp_close
+
+state "TCPソケットオープン中" as tcp_open {
+  state "接続待ち" as wait
+  state fork_state <<fork>>
+  state join_state <<join>>
+
+  state "センサクライアント" as sensor_client {
+
+    state "土壌湿気センサ接続中" as sensor1 {
+      sensor1:センサID = 001
+      sensor1:サービス = 現在値読み
+
+      state "センサへコマンド送付" as sensor1_write
+      sensor1_write : 現在値取得コマンド, 設定値取得コマンド
+
+      state "センサデータ受信待ち" as sensor1_read
+      sensor1_read : 現在値, 設定値
+
+      state "HASSのコマンド待機" as sensor1_wait
+      state "HASSへコマンド送付" as sensor1_to_hass
+      state "クローズ処理" as sensor1_close
+
+      [*] -> sensor1_wait
+      sensor1_wait -down-> sensor1_write : コマンド受信
+      sensor1_write -> sensor1_read : センサへデータ送付
+      sensor1_read -right-> sensor1_to_hass :データ受信
+      sensor1_to_hass --> sensor1_wait :コマンド送付
+      sensor1_wait -> sensor1_close :センサ接続切断
+      sensor1_close -> [*]
+    }
+
+    state "電球スイッチセンサ" as sensor2 {
+      sensor2: センサID = 002
+      sensor2: サービス = 設定値書き, サービス1(ON/OFF)
+      state "待機" as sensor2_wait
+      state "コマンド送付"
+      state "クローズ処理"
+    }
+
+    [*] --> sensor1:土壌湿気センサから接続要求
+    [*] --> sensor2:電球スイッチセンサから接続要求
+  }
+
+  state "HomeAsistant接続中" as home_rcv {
+    state "HASSのID受信待ち" as cmdID_wait
+    cmdID_wait:ID = h01
+    state "コマンド受信待ち" as cmd_rcv
+    cmd_rcv:センサID
+    cmd_rcv:サービスID[現在値読み, 設定値書き, nサービス実行]
+    cmd_rcv:データ
+    state "サービスコマンド生成" as cmd_svc
+    state "NGコマンド生成" as cmd_ng
+    state "センサデータ待機" as cmd_wait
+    state "データ送付" as home_write
+    state "クローズ処理" as home_close
+
+    [*] -> cmdID_wait
+    cmdID_wait --> cmd_rcv:該当ID有り
+    cmd_rcv -down-> cmd_svc :宛先/SvcID==OK
+    cmd_rcv --> cmd_ng :宛先ID/SVCID==NG
+    cmd_ng --> home_write
+    cmd_svc --> cmd_wait :センサIDnへコマンド送付
+    cmd_wait --> home_write :センサIDnからデータ受信
+    home_write -up-> cmd_rcv
+    cmd_rcv --> home_close :ENDコマンド受信
+    home_close --> [*]
+  }
+
+  [*] -> wait
+  wait --> fork_state
+  fork_state -right-> sensor_client :各センサから接続要求
+  fork_state -left-> home_rcv : ホームアシスタントから接続要求
+  sensor_client -down-> join_state
+  home_rcv -down-> join_state
+  fork_state -down-> join_state : プログラム終了コマンド受信(stdin)
+  join_state --> [*]
+
+  note bottom of home_rcv
+    基本はHomeAssistant(クライアント側)からのコマンド待ち
+    一度Openしたらサーバ側からは切断しない。
+  end note
+
+  note bottom of sensor_client
+    基本はHomeAssistantスレッドからのコマンドを待っている。
+    一度Openしたらサーバ側からは切断しない。
+  end note
+
+  note bottom of home_rcv
+    HomeAssistantからの受信コマンド書式
+       相手先のセンサID(3桁)
+        , (カンマ)
+       サービスID
+       , (カンマ)
+      任意データ
+  end note
+
+  note bottom of sensor_client
+  各センサからの受信コマンド書式
+  0-2　: 自分のセンサID(3桁)
+    3　: , (カンマ)
+  4-6 : サービスID
+   7　: , (カンマ)
+  8-　: 任意データ
+  end note
+
+  note bottom of sensor_client
+    各センサへの送信コマンド書式
+    0
+  end note
+}
+
+
+[*] -> create
+create --> listen
+listen --> tcp_open
+tcp_open -right-> tcp_close
+tcp_close --> [*]
+
+
+state "HomeAssisコマンド書式" as cmdformat
+cmdformat : 1~3 自分のクライアントID(3桁) ,
+cmdformat : 5~7
+@enduml
