@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import enum
 
 class Cmd(enum.Enum):

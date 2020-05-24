@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 # センサクライアントへ送信するコマンド文字列の定義
 READ_SND_CMD = b"READ,"
 WRITE_SND_CMD = b"WRITE,"
