@@ -7,6 +7,7 @@ import datetime
 import Def_Enum as enum
 import ThreadShareData as share
 import Def_SendCmd as def_cmd
+import CmdArgParse as Arg
 import time
 
 
@@ -378,4 +379,12 @@ def TcpServerStart():
         thread_no +=1
 
 if __name__ == "__main__":
+    args = Arg.get_args()
+    if args.addr:
+        server_ip = args.addr
+    if args.port:
+        server_port = args.port
+
+    print("Server IP = {}, Port = {}".format(server_ip, server_port))
     TcpServerStart()
+
