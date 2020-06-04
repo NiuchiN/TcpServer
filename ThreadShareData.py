@@ -3,8 +3,8 @@ import queue
 import threading
 import copy
 import datetime
-from TcpServer import Def_SendCmd as def_cmd
-from TcpServer import Def_Enum as enum
+import Def_SendCmd as def_cmd
+import Def_Enum as enum
 
 
 class ShareData():
